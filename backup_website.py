@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 
 #TODO:
     # run script once a month, and keep 3 snapshots at a given point.  
+    # determine which file types to ignore
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -40,9 +41,10 @@ def get_articles(url, force_redownload = False):
         '--tries=5',             # Try downloading files up to 5 times in case of errors
         '--continue',            # Continue downloading partially downloaded files
         '--timeout=30',          # Set a 30-second timeout for each download
-        '--waitretry=10',        # Wait 10 seconds between retries
-        '--wait=1',              # Wait 1 second between downloads to avoid overwhelming the server
-        '--limit-rate=20k',      # Limit download speed to 20 KB/s to reduce server load and manage bandwidth
+        '--waitretry=3',        # Wait 10 seconds between retries
+        '--quiet',
+        # '--wait=1',              # Wait 1 second between downloads to avoid overwhelming the server
+        # '--limit-rate=20k',      # Limit download speed to 20 KB/s to reduce server load and manage bandwidth
         url    # The URL to download
     ]
     if force_redownload:
