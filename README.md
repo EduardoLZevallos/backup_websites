@@ -14,3 +14,6 @@ these differences use
 ```
 diff -r tortillaconsal.com www.tortillaconsal.com | grep 'Only in tortillaconsal.com'
 ```
+
+## job details
+in total backuping up the website is about 13.5gb and it took around 3 hours to run the entire script
