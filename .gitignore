@@ -216,3 +216,6 @@ pip-selfcheck.json
 
 #directory from wget
 *tortillaconsal.com/*
+
+aws/
+aws*
