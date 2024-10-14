@@ -16,6 +16,8 @@ def upload_to_s3(local_file: str, bucket: str, key: str) -> None:
         print("The file was not found")
     except NoCredentialsError:
         print("Credentials not available")
+    except Exception as e:
+        print(f"unexpected error: {e}")
 
 
 def upload_all_files_to_s3() -> None:
