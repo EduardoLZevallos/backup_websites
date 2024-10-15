@@ -14,6 +14,9 @@ these differences use
 ```
 diff -r tortillaconsal.com www.tortillaconsal.com | grep 'Only in tortillaconsal.com'
 ```
+I have logic that merges and removes redundant directory
 
 ## job details
 in total backuping up the website is about 13.5gb and it took around 3 hours to run the entire script
+
+## for a complete list of files uploaded to s3 bucket see file tortilla_con_sal_files_backed_up.txt updated as of 10/14/2024

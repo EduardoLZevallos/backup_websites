@@ -124,7 +124,6 @@ def main(url, force_redownload):
 
     # uploads all the files to s3
     upload_all_files_to_s3()
-
-
+   
 if __name__ == "__main__":
     main()
