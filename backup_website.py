@@ -118,12 +118,13 @@ def main(url, force_redownload):
     get_articles(url, force_redownload)
 
     # tortilla scrape downloads from two directories, this code merges the two seperate directories
-    main_path = Path("./www.tortillaconsal.com/")
-    secondary_path = Path("./tortillaconsal.com")
+    main_path = Path("./www.tortillaconsal.com/")  # TODO: shouldn't be hardcoded
+    secondary_path = Path("./tortillaconsal.com")  # TODO: shouldn't be hardcoded
     merge_two_scraped_directories(main_path, secondary_path)
 
     # uploads all the files to s3
     upload_all_files_to_s3()
-   
+
+
 if __name__ == "__main__":
     main()
