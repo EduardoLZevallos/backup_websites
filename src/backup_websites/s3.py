@@ -1,8 +1,9 @@
-""" s3 functions """
+"""s3 functions"""
 
 import boto3
 from botocore.exceptions import NoCredentialsError
-from constants import BUCKET, LOCAL_DIRECTORY, S3_FOLDER
+
+from .constants import BUCKET, LOCAL_DIRECTORY, S3_FOLDER
 
 s3 = boto3.client("s3")
 

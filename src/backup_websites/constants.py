@@ -1,4 +1,4 @@
-""" constants """
+"""constants"""
 
 from pathlib import Path
 
