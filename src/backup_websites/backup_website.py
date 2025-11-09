@@ -7,6 +7,7 @@ import sys
 import traceback
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 import click
 
@@ -57,6 +58,37 @@ def get_articles(url: str, download_dir: Path, force_redownload: bool = False) -
 
     # Create download directory
     download_dir.mkdir(exist_ok=True)
+    parsed_url = urlparse(url)
+    domain = parsed_url.netloc
+    # Remove www if present to get base domain
+    if domain.startswith("www."):
+        base_domain = domain[4:]
+    else:
+        base_domain = domain
+    common_subdomains = [
+        base_domain,  # example.com
+        f"www.{base_domain}",  # www.example.com
+        f"blog.{base_domain}",  # blog.example.com
+        f"news.{base_domain}",  # news.example.com
+        f"shop.{base_domain}",  # shop.example.com
+        f"store.{base_domain}",  # store.example.com
+        f"forum.{base_domain}",  # forum.example.com
+        f"support.{base_domain}",  # support.example.com
+        f"help.{base_domain}",  # help.example.com
+        f"docs.{base_domain}",  # docs.example.com
+        f"api.{base_domain}",  # api.example.com
+        f"cdn.{base_domain}",  # cdn.example.com
+        f"media.{base_domain}",  # media.example.com
+        f"static.{base_domain}",  # static.example.com
+        f"assets.{base_domain}",  # assets.example.com
+        f"img.{base_domain}",  # img.example.com
+        f"images.{base_domain}",  # images.example.com
+        f"files.{base_domain}",  # files.example.com
+        f"downloads.{base_domain}",  # downloads.example.com
+        f"m.{base_domain}",  # m.example.com (mobile)
+        f"mobile.{base_domain}",  # mobile.example.com
+    ]
+    allowed_domains = ",".join(common_subdomains)
 
     wget_command = [
         "wget",
@@ -67,12 +99,13 @@ def get_articles(url: str, download_dir: Path, force_redownload: bool = False) -
         "--waitretry=30",
         "--tries=5",
         # Rate limiting
-        "--limit-rate=100k",  # Limit to 500 KB/s
+        "--limit-rate=1000k",  # Limit to 500 KB/s
         # Recursion and scope control
         "--recursive",
-        "--level=15",
+        "--level=5",
         "--no-parent",
         "--span-hosts",  # keep this else it will only download a few files from main domain
+        f"--domains={allowed_domains}",
         # Content handling
         "--page-requisites",
         "--adjust-extension",
