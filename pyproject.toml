@@ -10,7 +10,7 @@ name = "backup_websites"
 version = "0.1.0"
 description = "Tool for backing up websites using wget and uploading to S3"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.12"
 license = "MIT"
 authors = [
     { name = "Your Name", email = "your.email@example.com" }
@@ -29,7 +29,7 @@ dev = [
 [project.scripts]
 backup-website = "backup_websites.backup_website:main"
 
-[tool.ruff]
+[tool.lint]
 line-length = 88
 target-version = "py38"
 select = [

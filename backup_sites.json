@@ -1,0 +1,14 @@
+{
+  "sites": [
+    {
+      "name": "kawsachun",
+      "url": "https://kawsachun.com/",
+      "download_dir": "/media/me/storage_union/website-backups/kawsachun"
+    },
+    {
+      "name": "tortillaconsal", 
+      "url": "https://tortillaconsal.com/",
+      "download_dir": "/media/me/storage_union/website-backups/tortillaconsal"
+    }
+  ]
+}
