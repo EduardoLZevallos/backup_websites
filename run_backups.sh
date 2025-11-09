@@ -8,6 +8,9 @@ CONFIG_FILE="${SCRIPT_DIR}/backup_sites.json"
 
 # Function to set up the environment
 setup_environment() {
+    # Set low CPU priority for this script and its children
+    renice -n 20 -p $$ > /dev/null
+    
     # Change to script directory
     cd "${SCRIPT_DIR}" || {
         echo "Error: Cannot change to script directory ${SCRIPT_DIR}"
@@ -109,9 +112,25 @@ run_concurrent_backups() {
     wait_for_all_backups pids
 }
 
+# Function to upload all backup directories to S3
+upload_all_to_s3() {
+    echo "Starting S3 uploads for all backup directories..."
+    
+    jq -c '.sites[]' "${CONFIG_FILE}" | while IFS= read -r site; do
+        local site_info=$(parse_site_config "$site")
+        IFS='|' read -r name url download_dir <<< "$site_info"
+        
+        echo "Uploading backup for $name from $download_dir..."
+        ${UV} run s3.py "$download_dir" --s3-folder "$name"
+    done
+    
+    echo "All S3 uploads completed!"
+}
+
 main () {
     setup_environment
     run_concurrent_backups
+    # upload_all_to_s3
 }
 
 main

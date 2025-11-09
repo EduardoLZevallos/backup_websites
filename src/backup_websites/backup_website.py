@@ -54,7 +54,6 @@ def send_email(subject: str, body: str, email: str) -> None:
 
 def get_articles(url: str, download_dir: Path, force_redownload: bool = False) -> None:
     """uses wget to scrap website and attempt to get configuration files."""
-    domain = url.replace("https://", "").replace("http://", "").rstrip("/")
 
     # Create download directory
     download_dir.mkdir(exist_ok=True)
@@ -73,7 +72,7 @@ def get_articles(url: str, download_dir: Path, force_redownload: bool = False) -
         "--recursive",
         "--level=15",
         "--no-parent",
-        f"--domains={domain}",
+        "--span-hosts",  # keep this else it will only download a few files from main domain
         # Content handling
         "--page-requisites",
         "--adjust-extension",
@@ -88,11 +87,15 @@ def get_articles(url: str, download_dir: Path, force_redownload: bool = False) -
         "--show-progress",
         "--timestamping",
         "--verbose",
+        "--debug",
         url,
     ]
 
     if force_redownload:
-        wget_command.extend(["--no-use-server-timestamps", "--timestamping"])
+        wget_command = [
+            cmd for cmd in wget_command if cmd not in ["--timestamping", "--continue"]
+        ]
+        wget_command.extend(["--no-timestamping", "--force-directories"])
 
     result = subprocess.run(wget_command)
     match result.returncode:
@@ -115,6 +118,7 @@ def get_articles(url: str, download_dir: Path, force_redownload: bool = False) -
 @click.option(
     "--force_redownload",
     default=False,
+    is_flag=True,
     help="in case wget isn't downloading because of timestamp use this flag.",
 )
 @click.option(
