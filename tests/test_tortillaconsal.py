@@ -65,7 +65,7 @@ def test_find_missing_nodes_no_nodes_in_backup(mocker, sample_url, sample_downlo
     backup_dir = sample_download_dir / "www.example.com" / "bitacora" / "node"
     backup_dir.mkdir(parents=True, exist_ok=True)
 
-    missing_nodes = logic.find_missing_nodes()
+    missing_nodes = logic.find_missing_nodes("bitacora")
 
     assert missing_nodes == []
 
@@ -97,7 +97,7 @@ def test_find_missing_nodes_with_nodes(mocker, sample_url, sample_download_dir):
         "backup_websites.tortillaconsal.requests.head", return_value=mock_head_response
     )
 
-    missing_nodes = logic.find_missing_nodes()
+    missing_nodes = logic.find_missing_nodes("bitacora")
 
     # Should find missing nodes (3, 4, 6, 7, 8, 9, 10)
     assert len(missing_nodes) > 0
@@ -115,12 +115,13 @@ def test_download_pagination_pages_no_pagination(
     mock_response = MagicMock()
     mock_response.text = "<html>No pagination here</html>"
     mock_response.raise_for_status = MagicMock()
+    mock_response.status_code = 404  # No pagination
     mocker.patch(
-        "backup_websites.tortillaconsal.requests.get", return_value=mock_response
+        "backup_websites.tortillaconsal.requests.head", return_value=mock_response
     )
     mocker.patch("backup_websites.tortillaconsal.subprocess.run")
 
-    logic.download_pagination_pages()
+    logic.download_pagination_pages("bitacora")
 
     # Should not download any pages
 
@@ -153,7 +154,7 @@ def test_download_pagination_pages_with_pagination(
     mock_result.returncode = 0
     mock_run.return_value = mock_result
 
-    logic.download_pagination_pages()
+    logic.download_pagination_pages("bitacora")
 
     # Should attempt to download pages (0-5 = 6 pages)
     assert mock_run.called
@@ -171,7 +172,7 @@ def test_download_missing_nodes(mocker, sample_url, sample_download_dir):
     mock_result.returncode = 0
     mock_run.return_value = mock_result
 
-    logic.download_missing_nodes(missing_nodes)
+    logic.download_missing_nodes(missing_nodes, "bitacora")
 
     # Should call wget for each missing node
     assert mock_run.call_count == len(missing_nodes)
@@ -205,9 +206,12 @@ def test_run_with_node_structure(mocker, sample_url, sample_download_dir):
 
     # Should run all steps
     logic.verify_node_structure.assert_called_once()
-    logic.download_pagination_pages.assert_called_once()
-    logic.find_missing_nodes.assert_called_once()
-    logic.download_missing_nodes.assert_called_once_with([1, 2])
+    # Should be called twice (once for each node path: bitacora and tortilla)
+    assert logic.download_pagination_pages.call_count == 2
+    # Should be called twice (once for each node path)
+    assert logic.find_missing_nodes.call_count == 2
+    # Should be called twice (once for each node path if nodes are found)
+    assert logic.download_missing_nodes.call_count == 2
 
 
 def test_run_no_missing_nodes(mocker, sample_url, sample_download_dir):

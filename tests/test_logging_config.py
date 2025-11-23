@@ -20,9 +20,13 @@ def test_setup_logging_with_custom_file(temp_dir, sample_log_file):
     # Test that logging works
     logger.info("Test message")
 
-    # Verify log file was created and contains message
-    assert sample_log_file.exists()
-    content = sample_log_file.read_text()
+    # Verify log file was created with timestamp and contains message
+    # The filename will have a timestamp added, so we need to find it
+    log_files = list(sample_log_file.parent.glob(f"{sample_log_file.stem}_*.log"))
+    assert len(log_files) > 0, "No timestamped log file found"
+    timestamped_log_file = log_files[0]
+    assert timestamped_log_file.exists()
+    content = timestamped_log_file.read_text()
     assert "Test message" in content
 
 
@@ -55,3 +59,7 @@ def test_setup_logging_creates_parent_directories(temp_dir):
     # Verify parent directories were created
     assert nested_log_file.parent.exists()
     assert nested_log_file.parent.parent.exists()
+
+    # Verify timestamped log file was created
+    log_files = list(nested_log_file.parent.glob(f"{nested_log_file.stem}_*.log"))
+    assert len(log_files) > 0, "No timestamped log file found"

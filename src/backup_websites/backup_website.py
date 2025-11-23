@@ -96,8 +96,8 @@ def get_articles(url: str, download_dir: Path, force_redownload: bool = False) -
         # Output options
         "--show-progress",
         # "--timestamping",
-        "--verbose",
-        "--debug",
+        # "--verbose",
+        # "--debug",
         # mirror
         "--mirror",  # coverts --level, --recursive, --timestamping
         url,
@@ -149,13 +149,13 @@ def get_articles(url: str, download_dir: Path, force_redownload: bool = False) -
     type=click.Path(path_type=Path),
 )
 @click.option(
-    "--enable-node-detection",
-    default=False,
-    is_flag=True,
-    help="Enable Drupal node detection and missing node download (for sites like tortillaconsal.com with /bitacora/node/ structure)",
+    "--name",
+    default=None,
+    help="Site name (used for site-specific logic like tortillaconsal)",
+    type=str,
 )
 @click.command()
-def main(url, force_redownload, email, log_file, download_dir, enable_node_detection):
+def main(url, force_redownload, email, log_file, download_dir, name):
     """main function with integrated tortilla-con-sal-backup functionality"""
     script_dir = Path("/home/me/projects/backup_websites")
     detailed_errors = []
@@ -191,10 +191,13 @@ def main(url, force_redownload, email, log_file, download_dir, enable_node_detec
             detailed_errors.append(f"Wget download failed: {str(e)}")
             raise
 
-        # Check for and download missing nodes (specific to Drupal node-based sites)
-        # Only run if explicitly enabled via CLI flag
-        if enable_node_detection:
+        # Check for and download missing nodes (specific to tortillaconsal.com)
+        # Use site name to determine if we should run site-specific logic
+        if name == "tortillaconsal":
             try:
+                logger.info(
+                    "Running tortillaconsal-specific node detection and missing node download"
+                )
                 tortillaconsal_logic = TortillaconsalBackupLogic(url, download_dir)
                 tortillaconsal_logic.run()
             except Exception as e:

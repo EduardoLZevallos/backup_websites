@@ -12,6 +12,9 @@ from loguru import logger
 class TortillaconsalBackupLogic:
     """Handles tortillaconsal.com-specific backup logic for Drupal node detection."""
 
+    # Node paths to check (both bitacora and tortilla sections)
+    NODE_PATHS = ["bitacora", "tortilla"]
+
     def __init__(self, url: str, download_dir: Path):
         """Initialize with URL and download directory."""
         self.url = url
@@ -20,13 +23,13 @@ class TortillaconsalBackupLogic:
         self.domain = parsed_url.netloc
         self.base_url = f"{parsed_url.scheme}://{self.domain}"
 
-    def find_missing_nodes(self) -> list[int]:
-        """Find missing node numbers by comparing backup with live site."""
-        # Find highest node in backup
+    def find_missing_nodes(self, node_path: str) -> list[int]:
+        """Find missing node numbers by comparing backup with live site for a specific node path."""
+        # Find nodes in backup for this path
         backup_nodes = set()
         node_dir_patterns = [
-            self.download_dir / self.domain / "bitacora" / "node",
-            self.download_dir / f"www.{self.domain}" / "bitacora" / "node",
+            self.download_dir / self.domain / node_path / "node",
+            self.download_dir / f"www.{self.domain}" / node_path / "node",
         ]
 
         for node_dir in node_dir_patterns:
@@ -38,52 +41,57 @@ class TortillaconsalBackupLogic:
                             backup_nodes.add(int(match.group(1)))
 
         if not backup_nodes:
-            logger.warning("No nodes found in backup, skipping missing node check")
+            logger.info(
+                f"No nodes found in backup for /{node_path}/node/, skipping check"
+            )
             return []
 
         max_backup_node = max(backup_nodes)
-        logger.info(f"Highest node in backup: {max_backup_node}")
+        logger.info(f"Highest node in backup for /{node_path}/node/: {max_backup_node}")
 
-        # Find highest node on live site by checking homepage and archive
+        # Find highest node on live site by checking section homepage and archive
         try:
             live_nodes: set[int] = set()
 
-            # Check homepage
+            # Check section homepage
             try:
-                response = requests.get(f"{self.base_url}/bitacora/", timeout=30)
+                response = requests.get(f"{self.base_url}/{node_path}/", timeout=30)
                 response.raise_for_status()
                 content = response.text
-                node_pattern = r"/bitacora/node/(\d+)"
+                node_pattern = rf"/{node_path}/node/(\d+)"
                 live_nodes.update(
                     int(match) for match in re.findall(node_pattern, content)
                 )
             except requests.RequestException as e:
-                logger.warning(f"Failed to check homepage: {e}")
+                logger.warning(f"Failed to check {node_path} homepage: {e}")
 
-            # Check archive page if it exists
-            try:
-                archive_response = requests.get(
-                    f"{self.base_url}/archivos.html", timeout=30
-                )
-                if archive_response.status_code == 200:
-                    node_pattern = r"/bitacora/node/(\d+)"
-                    live_nodes.update(
-                        int(match)
-                        for match in re.findall(node_pattern, archive_response.text)
+            # Check archive page if it exists (mainly for bitacora)
+            if node_path == "bitacora":
+                try:
+                    archive_response = requests.get(
+                        f"{self.base_url}/archivos.html", timeout=30
                     )
-            except requests.RequestException:
-                # Archive might not exist, that's okay
-                pass
+                    if archive_response.status_code == 200:
+                        node_pattern = rf"/{node_path}/node/(\d+)"
+                        live_nodes.update(
+                            int(match)
+                            for match in re.findall(node_pattern, archive_response.text)
+                        )
+                except requests.RequestException:
+                    # Archive might not exist, that's okay
+                    pass
 
             if live_nodes:
                 max_live_node = max(live_nodes)
-                logger.info(f"Highest node found on live site: {max_live_node}")
+                logger.info(
+                    f"Highest node found on live site for /{node_path}/node/: {max_live_node}"
+                )
 
                 # Use binary search approach to find the actual highest node
-                # Start from max_live_node and work backwards to find the real max
+                # Start from max_live_node and work forwards to find the real max
                 actual_max = max_live_node
                 for test_node in range(max_live_node, max_live_node + 200):
-                    test_url = f"{self.base_url}/bitacora/node/{test_node}"
+                    test_url = f"{self.base_url}/{node_path}/node/{test_node}"
                     try:
                         test_response = requests.head(
                             test_url, timeout=5, allow_redirects=True
@@ -96,7 +104,9 @@ class TortillaconsalBackupLogic:
                     except requests.RequestException:
                         break
 
-                logger.info(f"Actual highest node on site: {actual_max}")
+                logger.info(
+                    f"Actual highest node on site for /{node_path}/node/: {actual_max}"
+                )
 
                 # For tortillaconsal, we know nodes are sequential, so check the entire range
                 # But do it efficiently by sampling first
@@ -104,7 +114,7 @@ class TortillaconsalBackupLogic:
                 test_range = range(1, actual_max + 1)  # Check from node 1 to actual_max
 
                 logger.info(
-                    f"Checking {len(test_range)} nodes for missing content (this may take a while)..."
+                    f"Checking {len(test_range)} nodes for missing content in /{node_path}/node/ (this may take a while)..."
                 )
 
                 # First, get all nodes that exist in backup
@@ -112,7 +122,9 @@ class TortillaconsalBackupLogic:
 
                 # For large ranges, identify gaps from backup and check those gaps
                 if len(test_range) > 1000:
-                    logger.info("Analyzing backup to identify gap regions...")
+                    logger.info(
+                        f"Analyzing backup to identify gap regions for /{node_path}/node/..."
+                    )
                     sorted_backup = sorted(existing_in_backup)
                     gaps_found = []
 
@@ -146,7 +158,7 @@ class TortillaconsalBackupLogic:
                             f"Checking gap {gap_start} to {gap_end - 1} ({gap_end - gap_start} nodes)..."
                         )
                         for node_num in range(gap_start, gap_end):
-                            test_url = f"{self.base_url}/bitacora/node/{node_num}"
+                            test_url = f"{self.base_url}/{node_path}/node/{node_num}"
                             try:
                                 test_response = requests.head(
                                     test_url, timeout=5, allow_redirects=True
@@ -165,7 +177,7 @@ class TortillaconsalBackupLogic:
                     logger.info(f"Checking all {len(test_range)} nodes individually...")
                     for node_num in test_range:
                         if node_num not in existing_in_backup:
-                            test_url = f"{self.base_url}/bitacora/node/{node_num}"
+                            test_url = f"{self.base_url}/{node_path}/node/{node_num}"
                             try:
                                 test_response = requests.head(
                                     test_url, timeout=5, allow_redirects=True
@@ -181,26 +193,32 @@ class TortillaconsalBackupLogic:
 
                 return sorted(missing_nodes)
             else:
-                logger.warning("No node links found on live site")
+                logger.warning(
+                    f"No node links found on live site for /{node_path}/node/"
+                )
                 return []
         except requests.RequestException as e:
-            logger.warning(f"Failed to check live site for missing nodes: {e}")
+            logger.warning(
+                f"Failed to check live site for missing nodes in /{node_path}/node/: {e}"
+            )
             return []
 
-    def download_pagination_pages(self) -> None:
-        """Explicitly download pagination pages to ensure wget finds all article links."""
-        logger.info("Finding all pagination pages...")
+    def download_pagination_pages(self, node_path: str) -> None:
+        """Explicitly download pagination pages to ensure wget finds all article links for a specific path."""
+        logger.info(f"Finding all pagination pages for /{node_path}/...")
 
         # Use binary search to find the maximum page number efficiently
         # First, check if pagination exists
-        test_url = f"{self.base_url}/bitacora/?page=0"
+        test_url = f"{self.base_url}/{node_path}/?page=0"
         try:
             response = requests.head(test_url, timeout=10, allow_redirects=True)
             if response.status_code != 200:
-                logger.info("No pagination found, skipping pagination download")
+                logger.info(
+                    f"No pagination found for /{node_path}/, skipping pagination download"
+                )
                 return
         except requests.RequestException:
-            logger.warning("Failed to check pagination, skipping")
+            logger.warning(f"Failed to check pagination for /{node_path}/, skipping")
             return
 
         # Binary search to find max page
@@ -209,7 +227,7 @@ class TortillaconsalBackupLogic:
 
         # First, find a rough upper bound by checking powers of 10
         for power in [10, 100, 500, 1000]:
-            test_url = f"{self.base_url}/bitacora/?page={power}"
+            test_url = f"{self.base_url}/{node_path}/?page={power}"
             try:
                 response = requests.head(test_url, timeout=10, allow_redirects=True)
                 if response.status_code == 200:
@@ -225,7 +243,7 @@ class TortillaconsalBackupLogic:
         logger.info(f"Binary searching for max page between {low} and {high}...")
         while low < high:
             mid = (low + high + 1) // 2
-            test_url = f"{self.base_url}/bitacora/?page={mid}"
+            test_url = f"{self.base_url}/{node_path}/?page={mid}"
             try:
                 response = requests.head(test_url, timeout=10, allow_redirects=True)
                 if response.status_code == 200:
@@ -238,17 +256,17 @@ class TortillaconsalBackupLogic:
         max_pages = low
 
         if max_pages == 0:
-            logger.info("Only page 0 exists, no pagination needed")
+            logger.info(f"Only page 0 exists for /{node_path}/, no pagination needed")
             return
 
         logger.info(
-            f"Found {max_pages + 1} pagination pages (0 to {max_pages}), downloading..."
+            f"Found {max_pages + 1} pagination pages (0 to {max_pages}) for /{node_path}/, downloading..."
         )
 
         # Download all pagination pages
         downloaded = 0
         for page in range(0, max_pages + 1):
-            page_url = f"{self.base_url}/bitacora/?page={page}"
+            page_url = f"{self.base_url}/{node_path}/?page={page}"
             wget_command = [
                 "wget",
                 "-e",
@@ -274,28 +292,32 @@ class TortillaconsalBackupLogic:
                 downloaded += 1
                 if page % 50 == 0 or page == max_pages:
                     logger.info(
-                        f"Downloaded pagination page {page}/{max_pages} ({downloaded} total)"
+                        f"Downloaded pagination page {page}/{max_pages} for /{node_path}/ ({downloaded} total)"
                     )
 
-        logger.info(f"Completed downloading {downloaded} pagination pages")
+        logger.info(
+            f"Completed downloading {downloaded} pagination pages for /{node_path}/"
+        )
 
-    def download_missing_nodes(self, missing_nodes: list[int]) -> None:
-        """Download missing node pages using wget."""
+    def download_missing_nodes(self, missing_nodes: list[int], node_path: str) -> None:
+        """Download missing node pages using wget for a specific node path."""
         if not missing_nodes:
             return
 
-        logger.info(f"Downloading {len(missing_nodes)} missing nodes...")
+        logger.info(
+            f"Downloading {len(missing_nodes)} missing nodes from /{node_path}/node/..."
+        )
 
         # Download in batches to avoid overwhelming the server
         batch_size = 50
         for i in range(0, len(missing_nodes), batch_size):
             batch = missing_nodes[i : i + batch_size]
             logger.info(
-                f"Downloading batch {i // batch_size + 1}/{(len(missing_nodes) - 1) // batch_size + 1} ({len(batch)} nodes)..."
+                f"Downloading batch {i // batch_size + 1}/{(len(missing_nodes) - 1) // batch_size + 1} ({len(batch)} nodes) from /{node_path}/node/..."
             )
 
             for node_num in batch:
-                node_url = f"{self.base_url}/bitacora/node/{node_num}"
+                node_url = f"{self.base_url}/{node_path}/node/{node_num}"
                 wget_command = [
                     "wget",
                     "-e",
@@ -321,43 +343,57 @@ class TortillaconsalBackupLogic:
                 if result.returncode == 0:
                     if node_num % 100 == 0 or node_num == batch[-1]:
                         logger.info(
-                            f"Downloaded node {node_num} ({i + batch.index(node_num) + 1}/{len(missing_nodes)})"
+                            f"Downloaded node {node_num} from /{node_path}/node/ ({i + batch.index(node_num) + 1}/{len(missing_nodes)})"
                         )
                 else:
                     logger.warning(
-                        f"Failed to download node {node_num}: {result.stderr}"
+                        f"Failed to download node {node_num} from /{node_path}/node/: {result.stderr}"
                     )
 
     def verify_node_structure(self) -> bool:
-        """Verify that the site has the /bitacora/node/ structure."""
-        test_node_url = f"{self.base_url}/bitacora/node/1"
-        try:
-            response = requests.head(test_node_url, timeout=10, allow_redirects=True)
-            return bool(response.status_code == 200)
-        except requests.RequestException:
-            return False
+        """Verify that the site has at least one of the known node structures."""
+        for node_path in self.NODE_PATHS:
+            test_node_url = f"{self.base_url}/{node_path}/node/1"
+            try:
+                response = requests.head(
+                    test_node_url, timeout=10, allow_redirects=True
+                )
+                if response.status_code == 200:
+                    logger.info(f"Found node structure at /{node_path}/node/")
+                    return True
+            except requests.RequestException:
+                continue
+        return False
 
     def run(self) -> None:
         """Run the complete tortillaconsal backup enhancement process."""
         if not self.verify_node_structure():
             logger.warning(
-                "Node detection enabled but /bitacora/node/ structure not found. Skipping node detection."
+                "Node detection enabled but no known node structures found. Skipping node detection."
             )
             return
 
-        # First, download pagination pages to help wget find more links
-        logger.info("Downloading pagination pages to discover all articles...")
-        self.download_pagination_pages()
+        # Process each node path separately
+        for node_path in self.NODE_PATHS:
+            logger.info(f"Processing node path: /{node_path}/node/")
 
-        # Then check for missing nodes
-        logger.info("Checking for missing nodes...")
-        missing_nodes = self.find_missing_nodes()
-        if missing_nodes:
-            logger.info(f"Found {len(missing_nodes)} missing nodes")
+            # First, download pagination pages to help wget find more links
             logger.info(
-                f"Sample missing nodes: {missing_nodes[:20]}{'...' if len(missing_nodes) > 20 else ''}"
+                f"Downloading pagination pages for /{node_path}/ to discover all articles..."
             )
-            self.download_missing_nodes(missing_nodes)
-            logger.info("Missing nodes download completed")
-        else:
-            logger.info("No missing nodes found")
+            self.download_pagination_pages(node_path)
+
+            # Then check for missing nodes
+            logger.info(f"Checking for missing nodes in /{node_path}/node/...")
+            missing_nodes = self.find_missing_nodes(node_path)
+            if missing_nodes:
+                logger.info(
+                    f"Found {len(missing_nodes)} missing nodes in /{node_path}/node/"
+                )
+                logger.info(
+                    f"Sample missing nodes: {missing_nodes[:20]}{'...' if len(missing_nodes) > 20 else ''}"
+                )
+                self.download_missing_nodes(missing_nodes, node_path)
+                logger.info(f"Missing nodes download completed for /{node_path}/node/")
+            else:
+                logger.info(f"No missing nodes found in /{node_path}/node/")

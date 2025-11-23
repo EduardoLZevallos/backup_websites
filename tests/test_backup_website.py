@@ -142,7 +142,7 @@ def test_main_success(mocker, temp_dir, sample_url, sample_log_file):
 
 
 def test_main_with_node_detection(mocker, temp_dir, sample_url, sample_log_file):
-    """Test main function with node detection enabled."""
+    """Test main function with node detection enabled via name parameter."""
     runner = CliRunner()
 
     # Mock dependencies
@@ -154,6 +154,8 @@ def test_main_with_node_detection(mocker, temp_dir, sample_url, sample_log_file)
     mock_tortillaconsal = mocker.patch(
         "backup_websites.backup_website.TortillaconsalBackupLogic"
     )
+    mock_instance = MagicMock()
+    mock_tortillaconsal.return_value = mock_instance
 
     download_dir = temp_dir / "downloads"
     download_dir.mkdir()
@@ -167,10 +169,12 @@ def test_main_with_node_detection(mocker, temp_dir, sample_url, sample_log_file)
             str(download_dir),
             "--log-file",
             str(sample_log_file),
-            "--enable-node-detection",
+            "--name",
+            "tortillaconsal",
         ],
     )
 
     # Should call tortillaconsal logic
     assert mock_tortillaconsal.called
+    mock_instance.run.assert_called_once()
     assert result.exit_code == 0

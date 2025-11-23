@@ -57,12 +57,8 @@ run_site_backup() {
     local download_dir="${3}"
     
     echo "Step 1: Running backup for ${name}..."
-    local extra_flags=""
-    if [[ "${name}" = "tortillaconsal" ]]; then
-        extra_flags="--enable-node-detection"
-    fi
     
-    if ! backup-website --url "${url}" --download-dir "${download_dir}" --log-file "${LOG_FILE}" ${extra_flags}; then
+    if ! backup-website --url "${url}" --download-dir "${download_dir}" --log-file "${LOG_FILE}" --name "${name}"; then
         echo "❌ Backup failed for ${name}"
         return 1
     fi
