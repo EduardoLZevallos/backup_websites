@@ -1,41 +1,17 @@
 """main script"""
 
-import logging
 import os
 import subprocess
-import sys
 import traceback
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
 import click
+from loguru import logger
 
-logger = logging.getLogger(__name__)
-
-
-def setup_logging(log_file: Path) -> None:
-    """Setup logging to both file and console"""
-    # Clear any existing handlers
-    logger.handlers.clear()
-    logging.getLogger().handlers.clear()
-
-    # Set up formatters
-    formatter = logging.Formatter("[%(asctime)s] %(message)s", "%Y-%m-%d %H:%M:%S")
-
-    # Console handler
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(formatter)
-
-    # File handler
-    file_handler = logging.FileHandler(log_file, mode="a")
-    file_handler.setFormatter(formatter)
-
-    # Configure root logger
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
-    root_logger.addHandler(console_handler)
-    root_logger.addHandler(file_handler)
+from .logging_config import setup_logging
+from .tortillaconsal import TortillaconsalBackupLogic
 
 
 def send_email(subject: str, body: str, email: str) -> None:
@@ -99,16 +75,17 @@ def get_articles(url: str, download_dir: Path, force_redownload: bool = False) -
         "--waitretry=30",
         "--tries=5",
         # Rate limiting
-        "--limit-rate=1000k",  # Limit to 500 KB/s
+        "--limit-rate=200k",  # Limit to 500 KB/s
         # Recursion and scope control
-        "--recursive",
-        "--level=5",
+        # "--recursive",
+        # "--level=15",
         "--no-parent",
         "--span-hosts",  # keep this else it will only download a few files from main domain
         f"--domains={allowed_domains}",
         # Content handling
         "--page-requisites",
         "--adjust-extension",
+        "--convert-links",
         # Link handling
         "--convert-links",
         # Download to specific directory
@@ -118,16 +95,16 @@ def get_articles(url: str, download_dir: Path, force_redownload: bool = False) -
         "--continue",
         # Output options
         "--show-progress",
-        "--timestamping",
+        # "--timestamping",
         "--verbose",
         "--debug",
+        # mirror
+        "--mirror",  # coverts --level, --recursive, --timestamping
         url,
     ]
 
     if force_redownload:
-        wget_command = [
-            cmd for cmd in wget_command if cmd not in ["--timestamping", "--continue"]
-        ]
+        wget_command = [cmd for cmd in wget_command if cmd not in ["--continue"]]
         wget_command.extend(["--no-timestamping", "--force-directories"])
 
     result = subprocess.run(wget_command)
@@ -171,8 +148,14 @@ def get_articles(url: str, download_dir: Path, force_redownload: bool = False) -
     help="Directory to download files to",
     type=click.Path(path_type=Path),
 )
+@click.option(
+    "--enable-node-detection",
+    default=False,
+    is_flag=True,
+    help="Enable Drupal node detection and missing node download (for sites like tortillaconsal.com with /bitacora/node/ structure)",
+)
 @click.command()
-def main(url, force_redownload, email, log_file, download_dir):
+def main(url, force_redownload, email, log_file, download_dir, enable_node_detection):
     """main function with integrated tortilla-con-sal-backup functionality"""
     script_dir = Path("/home/me/projects/backup_websites")
     detailed_errors = []
@@ -184,7 +167,7 @@ def main(url, force_redownload, email, log_file, download_dir):
             logger.info("Starting backup script")
             logger.info(f"Backing up URL: {url}")
         except Exception as e:
-            print(f"Failed to setup logging: {e}")
+            logger.error(f"Failed to setup logging: {e}")
             detailed_errors.append(f"Logging setup failed: {str(e)}")
             raise
 
@@ -208,15 +191,16 @@ def main(url, force_redownload, email, log_file, download_dir):
             detailed_errors.append(f"Wget download failed: {str(e)}")
             raise
 
-        # try:
-        #     # uploads all the files to s3
-        #     logger.info("Starting S3 upload...")
-        #     upload_all_files_to_s3()
-        #     logger.info("S3 upload completed successfully")
-        # except Exception as e:
-        #     logger.error(f"Failed to upload files to S3: {e}")
-        #     detailed_errors.append(f"S3 upload failed: {str(e)}")
-        #     raise
+        # Check for and download missing nodes (specific to Drupal node-based sites)
+        # Only run if explicitly enabled via CLI flag
+        if enable_node_detection:
+            try:
+                tortillaconsal_logic = TortillaconsalBackupLogic(url, download_dir)
+                tortillaconsal_logic.run()
+            except Exception as e:
+                logger.warning(f"Failed to check/download missing nodes: {e}")
+                detailed_errors.append(f"Missing nodes check failed: {str(e)}")
+                # Don't raise - this is a non-critical enhancement
 
         logger.info("Backup completed successfully")
 
@@ -232,6 +216,15 @@ def main(url, force_redownload, email, log_file, download_dir):
             send_email(subject, body, email)
         except Exception as email_error:
             logger.error(f"Failed to send success email: {email_error}")
+
+        # Create completion marker file to signal that backup is fully done
+        # This ensures S3 upload waits for all subprocesses (like pagination downloads) to complete
+        completion_file = Path(download_dir) / ".backup_complete"
+        try:
+            completion_file.touch()
+            logger.info(f"Backup fully completed. Completion marker: {completion_file}")
+        except Exception as e:
+            logger.warning(f"Failed to create completion marker: {e}")
 
     except Exception as e:
         error_msg = f"Error occurred in backup script: {str(e)}"
@@ -251,6 +244,14 @@ def main(url, force_redownload, email, log_file, download_dir):
             send_email(subject, error_msg, email)
         except Exception as email_error:
             logger.error(f"Failed to send failure email: {email_error}")
+
+        # Create completion marker even on failure so the script doesn't hang waiting
+        completion_file = Path(download_dir) / ".backup_complete"
+        try:
+            completion_file.touch()
+            logger.info(f"Completion marker created (backup failed): {completion_file}")
+        except Exception as e:
+            logger.warning(f"Failed to create completion marker: {e}")
 
         raise
 

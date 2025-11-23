@@ -1,17 +1,11 @@
-# /// script
-# dependencies = [
-#   "boto3",
-#   "click",
-# ]
-# ///
-
-
-# TODO: need to figure out direct storage to s3 glacier
 from pathlib import Path
 
 import boto3
 import click
 from botocore.exceptions import ClientError, NoCredentialsError
+from loguru import logger
+
+from .logging_config import setup_logging
 
 BUCKET = "left-website-backups"
 
@@ -42,33 +36,36 @@ def test_aws_credentials():
 
 
 def upload_to_s3(
-    local_file: str, bucket: str, key: str, storage_class: str = "DEEP_ARCHIVE"
+    local_file: str, bucket: str, key: str, storage_class: str = "STANDARD"
 ) -> None:
     """upload file to s3 with specified storage class"""
     try:
         s3.upload_file(
             local_file, bucket, key, ExtraArgs={"StorageClass": storage_class}
         )
-        print(f"Upload Successful: {key} (Storage Class: {storage_class})")
+        logger.info(f"Upload Successful: {key} (Storage Class: {storage_class})")
     except FileNotFoundError:
-        print("The file was not found")
+        logger.error("The file was not found")
+        raise
     except NoCredentialsError:
-        print("Credentials not available")
+        logger.error("Credentials not available")
+        raise
     except Exception as e:
-        print(f"unexpected error: {e}")
+        logger.error(f"unexpected error: {e}")
+        raise
 
 
 def upload_directory_to_s3(
     s3_folder: str,
     local_directory_path: str,
-    storage_class: str = "DEEP_ARCHIVE",
+    storage_class: str = "STANDARD",
     bucket=BUCKET,
 ) -> None:
     """upload all files from specified local directory"""
 
     local_dir = Path(local_directory_path)
     if not local_dir.exists():
-        print(f"Directory not found: {local_directory_path}")
+        logger.error(f"Directory not found: {local_directory_path}")
         return
 
     # Check if directory contains subdirectories that look like website domains
@@ -78,7 +75,7 @@ def upload_directory_to_s3(
         # If there are subdirectories, upload each one as a separate S3 folder
         for subdir in subdirs:
             subdir_name = subdir.name
-            print(f"Uploading subdirectory: {subdir_name}")
+            logger.info(f"Uploading subdirectory: {subdir_name}")
 
             for path in subdir.rglob("*"):
                 if path.is_file():
@@ -100,26 +97,35 @@ def upload_directory_to_s3(
 @click.option("--bucket", default=BUCKET, help="S3 bucket name")
 @click.option("--s3-folder", help="S3 folder prefix", required=True)
 @click.option(
-    "--storage-class",
-    default="DEEP_ARCHIVE",
-    type=click.Choice(["STANDARD", "GLACIER", "DEEP_ARCHIVE", "INTELLIGENT_TIERING"]),
-    help="S3 storage class (default: DEEP_ARCHIVE)",
+    "--log-file",
+    default="/home/me/projects/backup_websites/backup.log",
+    type=click.Path(path_type=Path),
+    help="Path to log file",
 )
-def main(directory_path, bucket, s3_folder, storage_class):
+@click.option(
+    "--storage-class",
+    default="STANDARD",
+    type=click.Choice(["STANDARD", "GLACIER", "DEEP_ARCHIVE", "INTELLIGENT_TIERING"]),
+    help="S3 storage class (default: STANDARD)",
+)
+def main(directory_path, bucket, s3_folder, log_file, storage_class):
     """Upload a directory to S3"""
+    # Setup logging
+    setup_logging(log_file)
+
     is_valid, message = test_aws_credentials()
     if not is_valid:
-        click.echo(f"❌ {message}")
-        click.echo("\n🔧 To fix this:")
-        click.echo("1. Run: aws configure")
-        click.echo("2. Enter your correct AWS Access Key ID and Secret Access Key")
-        click.echo("3. Make sure your credentials have S3 write permissions")
+        logger.error(f"❌ {message}")
+        logger.info("\n🔧 To fix this:")
+        logger.info("1. Run: aws configure")
+        logger.info("2. Enter your correct AWS Access Key ID and Secret Access Key")
+        logger.info("3. Make sure your credentials have S3 write permissions")
         return
 
-    click.echo(f"Uploading directory {directory_path} to s3://{bucket}/{s3_folder}")
-    click.echo(f"Storage class: {storage_class}")
+    logger.info(f"Uploading directory {directory_path} to s3://{bucket}/{s3_folder}")
+    logger.info(f"Storage class: {storage_class}")
     upload_directory_to_s3(s3_folder, directory_path, storage_class)
-    click.echo("Upload completed!")
+    logger.info("Upload completed!")
 
 
 if __name__ == "__main__":

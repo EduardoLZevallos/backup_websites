@@ -18,6 +18,8 @@ authors = [
 dependencies = [
     "click>=8.1.8",
     "boto3",
+    "requests",
+    "loguru",
 ]
 
 [project.optional-dependencies]
